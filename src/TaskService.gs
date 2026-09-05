@@ -41,17 +41,12 @@ function getOpenTasks_(userId) {
   return result;
 }
 
-/** Same matching strategy as findReminders_. */
+/** Same morphology-tolerant matching as findReminders_. */
 function findTasks_(userId, query) {
-  const q = String(query || '').toLowerCase().trim();
+  const q = String(query || '').trim();
   const open = getOpenTasks_(userId);
   if (!q) return open;
-  return open.filter(function (t) {
-    const text = t.task.toLowerCase();
-    const words = q.split(/\s+/).filter(function (w) { return w.length > 2; });
-    if (!words.length) return text.indexOf(q) !== -1;
-    return words.every(function (w) { return text.indexOf(w) !== -1; });
-  });
+  return open.filter(function (t) { return fuzzyMatch_(t.task, q); });
 }
 
 function completeTask_(taskId) {

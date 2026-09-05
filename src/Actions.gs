@@ -74,16 +74,19 @@ function actionDeleteReminder_(user, intent) {
     return '🔍 Не нашёл напоминание по запросу «' + (intent.query || '') + '».\n\n' +
       formatReminderList_(getActiveReminders_(user.telegramId, user.timezone));
   }
-  if (matches.length > 1) {
+  if (matches.length > 1 && !intent.all) {
     setState_(user.telegramId, {
       mode: 'clarify',
       question: 'Какое из найденных напоминаний удалить?',
       original: intent._sourceText || ''
     });
-    return '🔍 Нашёл несколько напоминаний — уточните, какое удалить:\n\n' + formatReminderList_(matches);
+    return '🔍 Нашёл несколько напоминаний — уточните, какое удалить (или скажите «все»):\n\n' +
+      formatReminderList_(matches);
   }
-  cancelReminder_(matches[0].id);
-  return '🗑 Напоминание удалено:\n**' + matches[0].text + '**';
+  matches.forEach(function (m) { cancelReminder_(m.id); });
+  if (matches.length === 1) return '🗑 Напоминание удалено:\n**' + matches[0].text + '**';
+  return '🗑 Удалено напоминаний: ' + matches.length + '\n\n' +
+    matches.map(function (m, i) { return (i + 1) + '. ' + m.text; }).join('\n');
 }
 
 function actionCreateTask_(user, intent) {
@@ -101,16 +104,19 @@ function actionCompleteTask_(user, intent) {
     return '🔍 Не нашёл открытую задачу по запросу «' + (intent.query || '') + '».\n\n' +
       formatTaskList_(getOpenTasks_(user.telegramId));
   }
-  if (matches.length > 1) {
+  if (matches.length > 1 && !intent.all) {
     setState_(user.telegramId, {
       mode: 'clarify',
       question: 'Какая из найденных задач выполнена?',
       original: intent._sourceText || ''
     });
-    return '🔍 Нашёл несколько задач — уточните, какая выполнена:\n\n' + formatTaskList_(matches);
+    return '🔍 Нашёл несколько задач — уточните, какая выполнена (или скажите «все»):\n\n' +
+      formatTaskList_(matches);
   }
-  completeTask_(matches[0].id);
-  return '✅ Задача выполнена:\n**' + matches[0].task + '**';
+  matches.forEach(function (m) { completeTask_(m.id); });
+  if (matches.length === 1) return '✅ Задача выполнена:\n**' + matches[0].task + '**';
+  return '✅ Выполнено задач: ' + matches.length + '\n\n' +
+    matches.map(function (m, i) { return (i + 1) + '. ' + m.task; }).join('\n');
 }
 
 function actionListTasks_(user) {

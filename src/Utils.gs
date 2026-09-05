@@ -133,6 +133,40 @@ function describeRecurrence_(rec) {
 }
 
 /**
+ * Morphology-tolerant word match for Russian: «петра» matches «петром»,
+ * «парта» does NOT match «парк». Two words match when they share a prefix
+ * of at least 4 chars (or the full shorter word) and each leaves at most
+ * 2 trailing chars beyond it (case endings).
+ */
+function wordsMatch_(a, b) {
+  a = String(a).toLowerCase().replace(/ё/g, 'е');
+  b = String(b).toLowerCase().replace(/ё/g, 'е');
+  if (a === b) return true;
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  const need = Math.min(4, Math.min(a.length, b.length));
+  return p >= need && a.length - p <= 2 && b.length - p <= 2;
+}
+
+/**
+ * Does `text` match the search `query`? Every significant query word
+ * (4+ chars) must fuzzy-match some text word; 3-char words are optional
+ * (short prepositions like «про» must not block a match).
+ */
+function fuzzyMatch_(text, query) {
+  const textWords = String(text || '').toLowerCase().split(/[^a-zа-яё0-9]+/i).filter(String);
+  const queryWords = String(query || '').toLowerCase().split(/[^a-zа-яё0-9]+/i).filter(String);
+  const required = queryWords.filter(function (w) { return w.length >= 4; });
+  const optional = queryWords.filter(function (w) { return w.length === 3; });
+  const hits = function (w) {
+    return textWords.some(function (t) { return wordsMatch_(w, t); });
+  };
+  if (required.length) return required.every(hits);
+  if (optional.length) return optional.some(hits);
+  return String(text || '').toLowerCase().indexOf(String(query || '').toLowerCase().trim()) !== -1;
+}
+
+/**
  * Extract a JSON object from model output. Tolerates ``` fences and
  * leading/trailing prose. Returns null if nothing parses.
  */

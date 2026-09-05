@@ -54,19 +54,14 @@ function getActiveReminders_(userId, tz) {
 }
 
 /**
- * Case-insensitive substring match of query words against reminder text.
- * Returns matching active reminders.
+ * Morphology-tolerant match of the query against reminder text
+ * («петра» finds «Встретиться с Петром»). Returns matching active reminders.
  */
 function findReminders_(userId, tz, query) {
-  const q = String(query || '').toLowerCase().trim();
+  const q = String(query || '').trim();
   const active = getActiveReminders_(userId, tz);
   if (!q) return active;
-  return active.filter(function (r) {
-    const text = r.text.toLowerCase();
-    const words = q.split(/\s+/).filter(function (w) { return w.length > 2; });
-    if (!words.length) return text.indexOf(q) !== -1;
-    return words.every(function (w) { return text.indexOf(w) !== -1; });
-  });
+  return active.filter(function (r) { return fuzzyMatch_(r.text, q); });
 }
 
 function cancelReminder_(reminderId) {

@@ -22,9 +22,10 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     'Возможные значения intent:\n' +
     '- create_reminder — создать напоминание (разовое или повторяющееся)\n' +
     '- list_reminders — показать активные напоминания\n' +
-    '- delete_reminder — удалить/отменить напоминание (query — по каким словам искать)\n' +
+    '- delete_reminder — удалить/отменить напоминание (query — ключевые слова для поиска, ' +
+    'без служебных слов; all = true, если пользователь хочет удалить ВСЕ подходящие: «оба», «все», «всё про…»)\n' +
     '- create_task — добавить задачу или несколько задач (tasks — массив формулировок)\n' +
-    '- complete_task — отметить задачу выполненной (query — по каким словам искать)\n' +
+    '- complete_task — отметить задачу выполненной (query — ключевые слова; all = true для «все»/«обе»)\n' +
     '- list_tasks — показать открытые задачи\n' +
     '- structure — пользователь просит структурировать/суммировать/оформить свой текст ' +
     '(выбери подходящий формат: список, чеклист, план, тезисы, action items — и положи ГОТОВЫЙ результат в reply)\n' +
@@ -39,6 +40,7 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     '    "recurrence": null или {"type": "DAILY|WEEKDAYS|WEEKLY|MONTHLY", "days": ["MON",...], "day_of_month": 1..31, "time": "HH:mm"}},\n' +
     '  "tasks": ["..."],\n' +
     '  "query": "...",\n' +
+    '  "all": true,\n' +
     '  "reply": "...",\n' +
     '  "clarify_question": "...",\n' +
     '  "confidence": 0.0\n' +

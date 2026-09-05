@@ -72,6 +72,16 @@ function runTests() {
   assertEqual_(extractJson_('Вот ответ: {"a":1} — готово'), { a: 1 }, 'JSON inside prose');
   assertEqual_(extractJson_('no json here'), null, 'no JSON → null');
 
+  // --- fuzzyMatch_ / wordsMatch_ (Russian case endings) ---
+  assertTrue_(wordsMatch_('петра', 'петром'), 'петра ~ петром');
+  assertTrue_(wordsMatch_('Пётр', 'петре'), 'Пётр ~ петре (ё → е)');
+  assertEqual_(wordsMatch_('парта', 'парк'), false, 'парта !~ парк');
+  assertTrue_(fuzzyMatch_('Встретиться с Петром', 'петра'), 'query петра finds Петром');
+  assertTrue_(fuzzyMatch_('Проверить отчёт', 'отчета'), 'отчета finds отчёт');
+  assertTrue_(fuzzyMatch_('Позвонить Андрею', 'про андрея'), 'short «про» does not block');
+  assertEqual_(fuzzyMatch_('Купить продукты', 'петра'), false, 'no false positive');
+  assertEqual_(fuzzyMatch_('Позвонить маме', 'позвонить папе'), false, 'both words required');
+
   // --- describeRecurrence_ ---
   assertEqual_(describeRecurrence_({ type: 'WEEKLY', days: ['SAT'], time: '10:00' }),
     'Каждую неделю: субботу в 10:00', 'describe weekly');
