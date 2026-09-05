@@ -82,6 +82,24 @@ function runTests() {
   assertEqual_(fuzzyMatch_('Купить продукты', 'петра'), false, 'no false positive');
   assertEqual_(fuzzyMatch_('Позвонить маме', 'позвонить папе'), false, 'both words required');
 
+  // --- normalizeTaskItem_ / priorities ---
+  assertEqual_(normalizeTaskItem_('купить хлеб'), { text: 'купить хлеб', priority: 'NORMAL', due: '' }, 'string task item');
+  assertEqual_(normalizeTaskItem_({ text: 'отчёт', priority: 'high', due: '2026-09-10' }),
+    { text: 'отчёт', priority: 'HIGH', due: '2026-09-10' }, 'object task item, lowercase priority');
+  assertEqual_(normalizeTaskItem_({ text: 'x', priority: 'urgent', due: 'завтра' }),
+    { text: 'x', priority: 'NORMAL', due: '' }, 'unknown priority and bad due degrade');
+  assertEqual_(normalizeTaskItem_(''), null, 'empty item → null');
+  assertEqual_(taskLine_({ task: 'отчёт', priority: 'HIGH', dueDate: '2026-09-10' }),
+    '🔴 отчёт (до 2026-09-10)', 'task line with priority and due');
+
+  // --- summaryDueKey_ (2026-09-05 = Saturday; TZ noon = sat12) ---
+  assertEqual_(summaryDueKey_({ daily: '08:00' }, 'daily', sat12, TZ), '2026-09-05', 'daily 08:00 due at 12:00');
+  assertEqual_(summaryDueKey_({ daily: '18:00' }, 'daily', sat12, TZ), null, 'daily 18:00 not due at 12:00');
+  assertEqual_(summaryDueKey_({}, 'daily', sat12, TZ), null, 'daily off → null');
+  assertEqual_(summaryDueKey_({ weekly: 'SAT 10:00' }, 'weekly', sat12, TZ), '2026-09-05', 'weekly SAT due');
+  assertEqual_(summaryDueKey_({ weekly: 'MON 10:00' }, 'weekly', sat12, TZ), null, 'weekly MON not due on SAT');
+  assertEqual_(summaryDueKey_({ daily: 'noon' }, 'daily', sat12, TZ), null, 'bad time spec → null');
+
   // --- describeRecurrence_ ---
   assertEqual_(describeRecurrence_({ type: 'WEEKLY', days: ['SAT'], time: '10:00' }),
     'Каждую неделю: субботу в 10:00', 'describe weekly');

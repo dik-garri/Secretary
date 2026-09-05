@@ -57,6 +57,7 @@ const CONFIG = {
 const SHEETS = {
   REMINDERS: 'Reminders',
   TASKS: 'Tasks',
+  NOTES: 'Notes',
   USERS: 'Users',
   LOGS: 'Logs',
   MODELS: 'Models'

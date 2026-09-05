@@ -69,20 +69,38 @@ function formatReminderList_(reminders) {
   return '🔔 **Напоминания**\n\n' + lines.join('\n');
 }
 
+function priorityMark_(priority) {
+  if (priority === 'HIGH') return '🔴 ';
+  if (priority === 'LOW') return '🔵 ';
+  return '';
+}
+
+function taskLine_(t) {
+  return priorityMark_(t.priority) + (t.task != null ? t.task : t.text) +
+    ((t.dueDate || t.due) ? ' (до ' + (t.dueDate || t.due) + ')' : '');
+}
+
 function formatTaskList_(tasks) {
   if (!tasks.length) return '📭 Открытых задач нет.';
-  const lines = tasks.map(function (t, i) {
-    let line = (i + 1) + '. ' + t.task;
-    if (t.dueDate) line += ' (до ' + t.dueDate + ')';
-    return line;
-  });
+  const lines = tasks.map(function (t, i) { return (i + 1) + '. ' + taskLine_(t); });
   return '📋 **Задачи**\n\n' + lines.join('\n');
 }
 
-function formatTasksCreated_(titles) {
-  if (titles.length === 1) return '✅ **Задача добавлена**\n\n📋 ' + titles[0];
-  return '✅ **Добавлено задач: ' + titles.length + '**\n\n' +
-    titles.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n');
+/** items: [{text, priority, due}] from createTasks_. */
+function formatTasksCreated_(items) {
+  if (items.length === 1) return '✅ **Задача добавлена**\n\n📋 ' + taskLine_(items[0]);
+  return '✅ **Добавлено задач: ' + items.length + '**\n\n' +
+    items.map(function (t, i) { return (i + 1) + '. ' + taskLine_(t); }).join('\n');
+}
+
+function formatNoteList_(notes, title) {
+  if (!notes.length) return '📭 Заметок не найдено.';
+  const lines = notes.map(function (n, i) {
+    return (i + 1) + '. ' + n.note +
+      (n.tags ? ' #' + n.tags.split(/,\s*/).join(' #') : '') +
+      ' (' + n.created + ')';
+  });
+  return '📝 **' + (title || 'Заметки') + '**\n\n' + lines.join('\n');
 }
 
 function formatTranscript_(transcript, structured) {
@@ -97,10 +115,14 @@ function helpText_() {
     '**Примеры:**\n' +
     '• «Напомни завтра в 9 позвонить Андрею»\n' +
     '• «Каждую субботу в 10 напоминай про план на неделю»\n' +
-    '• «Добавь задачу: проверить отчёт»\n' +
+    '• «Добавь важную задачу: проверить отчёт до пятницы»\n' +
     '• «Какие у меня задачи?» / «Покажи напоминания»\n' +
-    '• «Задача про отчёт выполнена»\n' +
+    '• «Задача про отчёт выполнена» / «Удали задачу про…»\n' +
+    '• «Задача про отчёт — срочная»\n' +
     '• «Удали напоминание про Андрея»\n' +
+    '• «Запиши: идея для проповеди про…» / «Что я записывал про…»\n' +
+    '• «Что у меня сегодня?» — сводка\n' +
+    '• «Присылай сводку каждый день в 8 утра»\n' +
     '• «Вот мои мысли, структурируй их: …»\n' +
     '• «Расшифруй следующее голосовое дословно»\n\n' +
     '**Команды:** /help — справка, /id — ваш Telegram ID';

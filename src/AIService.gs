@@ -8,7 +8,9 @@
 
 const INTENTS_ = [
   'create_reminder', 'list_reminders', 'delete_reminder',
-  'create_task', 'complete_task', 'list_tasks',
+  'create_task', 'complete_task', 'list_tasks', 'delete_task', 'update_task',
+  'create_note', 'list_notes', 'search_notes', 'delete_note',
+  'summary', 'summary_schedule',
   'structure', 'transcribe_mode', 'answer', 'clarify'
 ];
 
@@ -24,9 +26,25 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     '- list_reminders — показать активные напоминания\n' +
     '- delete_reminder — удалить/отменить напоминание (query — ключевые слова для поиска, ' +
     'без служебных слов; all = true, если пользователь хочет удалить ВСЕ подходящие: «оба», «все», «всё про…»)\n' +
-    '- create_task — добавить задачу или несколько задач (tasks — массив формулировок)\n' +
+    '- create_task — добавить задачу/задачи. tasks — массив объектов ' +
+    '{"text": "...", "priority": "HIGH|NORMAL|LOW", "due": "YYYY-MM-DD" или null}. ' +
+    'priority: «важно», «срочно», «в первую очередь» = HIGH; «неважно», «потом», «как-нибудь» = LOW; иначе NORMAL. ' +
+    'due заполняй только если назван срок («до пятницы», «к 15-му»)\n' +
     '- complete_task — отметить задачу выполненной (query — ключевые слова; all = true для «все»/«обе»)\n' +
+    '- delete_task — удалить задачу совсем, не выполнив («удали задачу», «убери из списка»; query, all)\n' +
+    '- update_task — изменить приоритет или срок существующей задачи ' +
+    '(«задача про отчёт — срочная», «перенеси срок на пятницу»; query + priority и/или due)\n' +
     '- list_tasks — показать открытые задачи\n' +
+    '- create_note — сохранить заметку/мысль/факт БЕЗ действия и срока ' +
+    '(«запиши:», «заметка:», «сохрани мысль», «запомни, что…»; note — текст, tags — 1-3 коротких тега)\n' +
+    '- list_notes — показать заметки\n' +
+    '- search_notes — найти заметку («что я записывал про…»; query)\n' +
+    '- delete_note — удалить заметку (query, all)\n' +
+    '- summary — сводка по запросу: «что у меня сегодня/на неделю», «сводка», «мой день» ' +
+    '(period: "daily" или "weekly")\n' +
+    '- summary_schedule — настроить регулярную сводку: «присылай сводку каждый день в 8», ' +
+    '«еженедельную сводку по понедельникам в 9», «отключи ежедневную сводку» ' +
+    '(period: "daily"|"weekly", time: "HH:mm", day: "MON".."SUN" для weekly, enabled: true|false)\n' +
     '- structure — пользователь просит структурировать/суммировать/оформить свой текст ' +
     '(выбери подходящий формат: список, чеклист, план, тезисы, action items — и положи ГОТОВЫЙ результат в reply)\n' +
     '- transcribe_mode — просит расшифровать СЛЕДУЮЩЕЕ голосовое дословно, ничего не меняя\n' +
@@ -38,9 +56,17 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     '  "transcript": "только для аудио: полный распознанный текст",\n' +
     '  "reminder": {"text": "...", "datetime": "YYYY-MM-DD HH:mm" или null,\n' +
     '    "recurrence": null или {"type": "DAILY|WEEKDAYS|WEEKLY|MONTHLY", "days": ["MON",...], "day_of_month": 1..31, "time": "HH:mm"}},\n' +
-    '  "tasks": ["..."],\n' +
+    '  "tasks": [{"text": "...", "priority": "NORMAL", "due": null}],\n' +
     '  "query": "...",\n' +
     '  "all": true,\n' +
+    '  "priority": "HIGH|NORMAL|LOW",\n' +
+    '  "due": "YYYY-MM-DD",\n' +
+    '  "note": "...",\n' +
+    '  "tags": ["..."],\n' +
+    '  "period": "daily|weekly",\n' +
+    '  "time": "HH:mm",\n' +
+    '  "day": "MON",\n' +
+    '  "enabled": true,\n' +
     '  "reply": "...",\n' +
     '  "clarify_question": "...",\n' +
     '  "confidence": 0.0\n' +

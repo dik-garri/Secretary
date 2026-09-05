@@ -12,7 +12,15 @@ const ACTION_HANDLERS_ = {
   delete_reminder: actionDeleteReminder_,
   create_task: actionCreateTask_,
   complete_task: actionCompleteTask_,
+  delete_task: actionDeleteTask_,
+  update_task: actionUpdateTask_,
   list_tasks: actionListTasks_,
+  create_note: actionCreateNote_,
+  list_notes: actionListNotes_,
+  search_notes: actionSearchNotes_,
+  delete_note: actionDeleteNote_,
+  summary: actionSummary_,
+  summary_schedule: actionSummarySchedule_,
   structure: actionReply_,
   answer: actionReply_,
   transcribe_mode: actionTranscribeMode_,
@@ -90,11 +98,11 @@ function actionDeleteReminder_(user, intent) {
 }
 
 function actionCreateTask_(user, intent) {
-  const titles = (intent.tasks || []).filter(function (t) { return String(t || '').trim(); });
-  if (!titles.length) {
+  const items = (intent.tasks || []).map(normalizeTaskItem_).filter(Boolean);
+  if (!items.length) {
     return askClarify_(user, 'Какую задачу добавить?', intent);
   }
-  const created = createTasks_(user.telegramId, titles);
+  const created = createTasks_(user.telegramId, items);
   return formatTasksCreated_(created);
 }
 
@@ -121,6 +129,137 @@ function actionCompleteTask_(user, intent) {
 
 function actionListTasks_(user) {
   return formatTaskList_(getOpenTasks_(user.telegramId));
+}
+
+function actionDeleteTask_(user, intent) {
+  const matches = findTasks_(user.telegramId, intent.query);
+  if (!matches.length) {
+    return '🔍 Не нашёл открытую задачу по запросу «' + (intent.query || '') + '».\n\n' +
+      formatTaskList_(getOpenTasks_(user.telegramId));
+  }
+  if (matches.length > 1 && !intent.all) {
+    setState_(user.telegramId, {
+      mode: 'clarify',
+      question: 'Какую из найденных задач удалить?',
+      original: intent._sourceText || ''
+    });
+    return '🔍 Нашёл несколько задач — уточните, какую удалить (или скажите «все»):\n\n' +
+      formatTaskList_(matches);
+  }
+  matches.forEach(function (m) { deleteTask_(m.id); });
+  if (matches.length === 1) return '🗑 Задача удалена:\n**' + matches[0].task + '**';
+  return '🗑 Удалено задач: ' + matches.length + '\n\n' +
+    matches.map(function (m, i) { return (i + 1) + '. ' + m.task; }).join('\n');
+}
+
+function actionUpdateTask_(user, intent) {
+  if (!intent.priority && !intent.due) {
+    return askClarify_(user, 'Что изменить в задаче — приоритет или срок?', intent);
+  }
+  const matches = findTasks_(user.telegramId, intent.query);
+  if (!matches.length) {
+    return '🔍 Не нашёл открытую задачу по запросу «' + (intent.query || '') + '».\n\n' +
+      formatTaskList_(getOpenTasks_(user.telegramId));
+  }
+  if (matches.length > 1 && !intent.all) {
+    setState_(user.telegramId, {
+      mode: 'clarify',
+      question: 'Какую из найденных задач изменить?',
+      original: intent._sourceText || ''
+    });
+    return '🔍 Нашёл несколько задач — уточните, какую изменить:\n\n' + formatTaskList_(matches);
+  }
+  matches.forEach(function (m) {
+    updateTask_(m.id, { priority: intent.priority, due: intent.due });
+  });
+  const updated = findTasks_(user.telegramId, intent.query);
+  return '✏️ Обновлено:\n\n' + updated.map(function (t, i) {
+    return (i + 1) + '. ' + taskLine_(t);
+  }).join('\n');
+}
+
+// ===== Notes =====
+
+function actionCreateNote_(user, intent) {
+  const text = String(intent.note || '').trim();
+  if (!text) {
+    return askClarify_(user, 'Что записать в заметку?', intent);
+  }
+  createNote_(user.telegramId, text, intent.tags || []);
+  return '📝 **Заметка сохранена**\n\n' + text +
+    (intent.tags && intent.tags.length ? '\n#' + intent.tags.join(' #') : '');
+}
+
+function actionListNotes_(user) {
+  const notes = getNotes_(user.telegramId);
+  const shown = notes.slice(0, 15);
+  let out = formatNoteList_(shown, 'Заметки');
+  if (notes.length > 15) out += '\n… и ещё ' + (notes.length - 15) + ' (ищите по словам)';
+  return out;
+}
+
+function actionSearchNotes_(user, intent) {
+  const matches = findNotes_(user.telegramId, intent.query);
+  if (!matches.length) {
+    return '🔍 Ничего не нашёл по запросу «' + (intent.query || '') + '».';
+  }
+  return formatNoteList_(matches.slice(0, 15), 'Найдено: ' + (intent.query || ''));
+}
+
+function actionDeleteNote_(user, intent) {
+  const matches = findNotes_(user.telegramId, intent.query);
+  if (!matches.length) {
+    return '🔍 Не нашёл заметку по запросу «' + (intent.query || '') + '».';
+  }
+  if (matches.length > 1 && !intent.all) {
+    setState_(user.telegramId, {
+      mode: 'clarify',
+      question: 'Какую из найденных заметок удалить?',
+      original: intent._sourceText || ''
+    });
+    return '🔍 Нашёл несколько заметок — уточните, какую удалить (или скажите «все»):\n\n' +
+      formatNoteList_(matches, 'Найдено');
+  }
+  matches.forEach(function (m) { deleteNote_(m.id); });
+  if (matches.length === 1) return '🗑 Заметка удалена:\n' + matches[0].note;
+  return '🗑 Удалено заметок: ' + matches.length;
+}
+
+// ===== Summaries =====
+
+function actionSummary_(user, intent) {
+  return buildSummary_(user, intent.period === 'weekly' ? 'weekly' : 'daily');
+}
+
+function actionSummarySchedule_(user, intent) {
+  const period = intent.period === 'weekly' ? 'weekly' : 'daily';
+  const settings = getUserSettings_(user);
+
+  if (intent.enabled === false) {
+    delete settings[period];
+    saveUserSettings_(user.telegramId, settings);
+    return '🔕 ' + (period === 'weekly' ? 'Еженедельная' : 'Ежедневная') + ' сводка отключена.';
+  }
+
+  const tm = String(intent.time || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!tm) {
+    return askClarify_(user, 'В какое время присылать ' +
+      (period === 'weekly' ? 'еженедельную' : 'ежедневную') + ' сводку?', intent);
+  }
+  const time = pad2_(+tm[1]) + ':' + tm[2];
+
+  if (period === 'weekly') {
+    const day = DOW_CODES_.indexOf(String(intent.day || '').toUpperCase()) !== -1
+      ? String(intent.day).toUpperCase() : 'MON';
+    settings.weekly = day + ' ' + time;
+    saveUserSettings_(user.telegramId, settings);
+    return '📅 Буду присылать сводку: ' + describeRecurrence_({ type: 'WEEKLY', days: [day], time: time });
+  }
+
+  settings.daily = time;
+  saveUserSettings_(user.telegramId, settings);
+  return '🌅 Буду присылать сводку каждый день в ' + time +
+    '\n(точность — в пределах ' + CONFIG.SCHEDULER_INTERVAL_MINUTES + ' минут)';
 }
 
 /** structure / answer — the AI already produced the final reply. */

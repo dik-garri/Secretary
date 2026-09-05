@@ -54,6 +54,13 @@ function checkReminders() {
         logEvent_(r.userId, 'reminder_error', r.text, '', '', r.id, e.message);
       }
     }
+
+    // Scheduled daily/weekly digests ride the same trigger.
+    try {
+      checkSummaries_();
+    } catch (e) {
+      logEvent_('', 'summary_error', '', '', '', '', e.message);
+    }
   } finally {
     lock.releaseLock();
   }

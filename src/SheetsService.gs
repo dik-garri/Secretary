@@ -67,6 +67,7 @@ function setup() {
     ['ID', 'UserID', 'Task', 'Status', 'Priority', 'DueDate', 'CreatedAt']);
   tasks.getRange('F:F').setNumberFormat('@');
 
+  ensure(SHEETS.NOTES, ['ID', 'UserID', 'Note', 'Tags', 'CreatedAt']);
   ensure(SHEETS.USERS, ['TelegramID', 'Name', 'Timezone', 'Language', 'Settings']);
   ensure(SHEETS.LOGS, ['Timestamp', 'TelegramID', 'Type', 'Input', 'Intent', 'Model', 'Result', 'Error']);
 
@@ -79,6 +80,19 @@ function setup() {
 
   console.log('Sheets initialized. Next: deploy as Web App, put the deployment URL into ' +
     'Script Property WEBAPP_URL, run setWebhook(), then setupTrigger().');
+}
+
+/** Get a sheet, creating it with headers if missing (self-healing for
+ * sheets added after the initial setup() run, e.g. Notes). */
+function ensureSheetExists_(name, headers) {
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
 }
 
 // ===== Users =====
@@ -106,6 +120,17 @@ function ensureUser_(telegramId, name) {
   getSheet_(SHEETS.USERS).appendRow(
     [String(telegramId), name || '', CONFIG.DEFAULT_TIMEZONE, CONFIG.DEFAULT_LANGUAGE, '']);
   return getUser_(telegramId);
+}
+
+/** Parse the Settings JSON column of a user row ({} on empty/broken). */
+function getUserSettings_(user) {
+  try { return user.settings ? JSON.parse(user.settings) : {}; } catch (e) { return {}; }
+}
+
+function saveUserSettings_(telegramId, settings) {
+  const sheet = getSheet_(SHEETS.USERS);
+  const rowNum = findRowByValue_(sheet, 0, telegramId);
+  if (rowNum !== -1) sheet.getRange(rowNum, 5).setValue(JSON.stringify(settings));
 }
 
 // ===== Dialog state (ScriptProperties — webhook runs anonymously,
