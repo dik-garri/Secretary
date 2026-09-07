@@ -185,6 +185,35 @@ function extractJson_(text) {
 }
 
 /**
+ * Mask credentials that leak into error messages: GAS exceptions include the
+ * full request URL, and Telegram/Gemini URLs embed the bot token / API key.
+ */
+function maskSecrets_(s) {
+  return String(s == null ? '' : s)
+    .replace(/bot\d+:[A-Za-z0-9_-]{20,}/g, 'bot<token>')
+    .replace(/([?&]key=)[A-Za-z0-9_-]{10,}/g, '$1<redacted>')
+    .replace(/([?&]token=)[A-Za-z0-9_-]{10,}/g, '$1<redacted>');
+}
+
+/**
+ * UrlFetchApp.fetch with retries: GAS sporadically throws transient network
+ * errors ("Address unavailable", timeouts, DNS). A short backoff fixes them.
+ */
+function fetchWithRetry_(url, params, attempts) {
+  attempts = attempts || 3;
+  let lastError;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return UrlFetchApp.fetch(url, params);
+    } catch (e) {
+      lastError = e;
+      if (i < attempts) Utilities.sleep(500 * i);
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Append a row to the Logs sheet. Must never throw — logging failures
  * cannot be allowed to break request handling.
  */
@@ -195,11 +224,11 @@ function logEvent_(telegramId, type, input, intent, model, result, error) {
       Utilities.formatDate(new Date(), 'UTC', "yyyy-MM-dd'T'HH:mm:ss'Z'"),
       String(telegramId || ''),
       String(type || ''),
-      String(input || '').substring(0, 2000),
+      maskSecrets_(input).substring(0, 2000),
       String(intent || ''),
       String(model || ''),
-      String(result || '').substring(0, 2000),
-      String(error || '').substring(0, 2000)
+      maskSecrets_(result).substring(0, 2000),
+      maskSecrets_(error).substring(0, 2000)
     ]);
   } catch (e) {
     try { console.error('logEvent_ failed: ' + e.message); } catch (e2) { /* ignore */ }

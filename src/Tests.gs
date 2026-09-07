@@ -100,6 +100,14 @@ function runTests() {
   assertEqual_(summaryDueKey_({ weekly: 'MON 10:00' }, 'weekly', sat12, TZ), null, 'weekly MON not due on SAT');
   assertEqual_(summaryDueKey_({ daily: 'noon' }, 'daily', sat12, TZ), null, 'bad time spec → null');
 
+  // --- maskSecrets_ ---
+  assertEqual_(
+    maskSecrets_('Address unavailable: https://api.telegram.org/bot8821501521:AAEx29He8OkCsorpYAAV9E1UzdssmR4m76U/getFile'),
+    'Address unavailable: https://api.telegram.org/bot<token>/getFile', 'bot token masked');
+  assertEqual_(maskSecrets_('...generateContent?key=AIzaSyD1234567890abcdef&x=1'),
+    '...generateContent?key=<redacted>&x=1', 'gemini key masked');
+  assertEqual_(maskSecrets_('обычный текст без секретов'), 'обычный текст без секретов', 'plain text untouched');
+
   // --- describeRecurrence_ ---
   assertEqual_(describeRecurrence_({ type: 'WEEKLY', days: ['SAT'], time: '10:00' }),
     'Каждую неделю: субботу в 10:00', 'describe weekly');

@@ -120,9 +120,10 @@ function callGemini_(parts, options) {
   for (let i = 0; i < models.length; i++) {
     const model = models[i].name;
     try {
-      const response = UrlFetchApp.fetch(
+      const response = fetchWithRetry_(
         GEMINI_BASE_ + model + ':generateContent?key=' + encodeURIComponent(key),
-        { method: 'post', contentType: 'application/json', payload: body, muteHttpExceptions: true });
+        { method: 'post', contentType: 'application/json', payload: body, muteHttpExceptions: true },
+        2); // 2 attempts per model — the fallback chain is the bigger retry
       const code = response.getResponseCode();
 
       if (code === 200) {

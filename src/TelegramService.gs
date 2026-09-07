@@ -12,9 +12,9 @@ function telegramFileApi_() {
   return 'https://api.telegram.org/file/bot' + getBotToken_();
 }
 
-/** Low-level call. Returns parsed JSON response. */
+/** Low-level call with transient-error retry. Returns parsed JSON response. */
 function tgCall_(method, payload) {
-  const response = UrlFetchApp.fetch(telegramApi_() + '/' + method, {
+  const response = fetchWithRetry_(telegramApi_() + '/' + method, {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify(payload),
@@ -74,7 +74,7 @@ function sendTyping_(chatId) {
 function getFileBlob_(fileId) {
   const info = tgCall_('getFile', { file_id: fileId });
   if (!info.ok || !info.result.file_path) throw new Error('getFile failed for ' + fileId);
-  const response = UrlFetchApp.fetch(telegramFileApi_() + '/' + info.result.file_path, {
+  const response = fetchWithRetry_(telegramFileApi_() + '/' + info.result.file_path, {
     muteHttpExceptions: true
   });
   if (response.getResponseCode() !== 200) {
