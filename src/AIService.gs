@@ -10,7 +10,7 @@ const INTENTS_ = [
   'create_reminder', 'list_reminders', 'delete_reminder',
   'create_task', 'complete_task', 'list_tasks', 'delete_task', 'update_task',
   'create_note', 'list_notes', 'search_notes', 'delete_note',
-  'summary', 'summary_schedule',
+  'summary', 'summary_schedule', 'draft_message',
   'structure', 'transcribe_mode', 'answer', 'clarify'
 ];
 
@@ -45,6 +45,13 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     '- summary_schedule — настроить регулярную сводку: «присылай сводку каждый день в 8», ' +
     '«еженедельную сводку по понедельникам в 9», «отключи ежедневную сводку» ' +
     '(period: "daily"|"weekly", time: "HH:mm", day: "MON".."SUN" для weekly, enabled: true|false)\n' +
+    '- draft_message — составить сообщение или письмо кому-то от лица пользователя ' +
+    '(«напиши сообщение Кут-Назару о…», «составь письмо…», «ответь ему, что…», «черновик…»). ' +
+    'draft: {"recipient": "имя/кому", "channel": "message" или "email", ' +
+    '"subject": "тема (только для email)", "text": "полный готовый к отправке текст"}. ' +
+    'Текст пиши от первого лица, вежливо, без плейсхолдеров вроде [имя]. ' +
+    'Если пользователь просит доработать предыдущий черновик («короче», «формальнее», «добавь…») — ' +
+    'верни draft_message с полным ОБНОВЛЁННЫМ текстом\n' +
     '- structure — пользователь просит структурировать/суммировать/оформить свой текст ' +
     '(выбери подходящий формат: список, чеклист, план, тезисы, action items — и положи ГОТОВЫЙ результат в reply)\n' +
     '- transcribe_mode — просит расшифровать СЛЕДУЮЩЕЕ голосовое дословно, ничего не меняя\n' +
@@ -63,6 +70,7 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     '  "due": "YYYY-MM-DD",\n' +
     '  "note": "...",\n' +
     '  "tags": ["..."],\n' +
+    '  "draft": {"recipient": "...", "channel": "message|email", "subject": "...", "text": "..."},\n' +
     '  "period": "daily|weekly",\n' +
     '  "time": "HH:mm",\n' +
     '  "day": "MON",\n' +

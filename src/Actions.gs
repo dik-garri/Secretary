@@ -21,6 +21,7 @@ const ACTION_HANDLERS_ = {
   delete_note: actionDeleteNote_,
   summary: actionSummary_,
   summary_schedule: actionSummarySchedule_,
+  draft_message: actionDraftMessage_,
   structure: actionReply_,
   answer: actionReply_,
   transcribe_mode: actionTranscribeMode_,
@@ -260,6 +261,29 @@ function actionSummarySchedule_(user, intent) {
   saveUserSettings_(user.telegramId, settings);
   return '🌅 Буду присылать сводку каждый день в ' + time +
     '\n(точность — в пределах ' + CONFIG.SCHEDULER_INTERVAL_MINUTES + ' минут)';
+}
+
+/**
+ * Draft a message/email. The draft is kept in dialog state so follow-ups
+ * («короче», «формальнее», «добавь…») revise it instead of starting over.
+ */
+function actionDraftMessage_(user, intent) {
+  const d = intent.draft || {};
+  const text = String(d.text || '').trim();
+  if (!text) {
+    return askClarify_(user, 'Кому и о чём написать сообщение?', intent);
+  }
+  setState_(user.telegramId, {
+    mode: 'draft',
+    text: text,
+    recipient: String(d.recipient || ''),
+    request: intent._sourceText || ''
+  });
+  let out = '✉️ **Черновик' + (d.recipient ? ' для ' + d.recipient : '') + '**\n\n';
+  if (d.channel === 'email' && d.subject) out += '**Тема:** ' + d.subject + '\n\n';
+  out += '```\n' + text + '\n```\n\n';
+  out += 'Нажмите на текст — он скопируется. Могу переделать: «короче», «формальнее», «добавь …».';
+  return out;
 }
 
 /** structure / answer — the AI already produced the final reply. */

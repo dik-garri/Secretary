@@ -65,6 +65,10 @@ function runTests() {
   // --- toTelegramHtml_ / escapeHtml_ ---
   assertEqual_(toTelegramHtml_('**bold** & <tag>'), '<b>bold</b> &amp; &lt;tag&gt;', 'bold + escaping');
   assertEqual_(toTelegramHtml_('2 ** 3 = 8'), '2 ** 3 = 8', 'lone ** untouched');
+  assertEqual_(toTelegramHtml_('```\nПривет, **друг** <тут>\n```'),
+    '<pre>Привет, **друг** &lt;тут&gt;</pre>', 'fence → pre, no bold inside, escaped');
+  assertEqual_(toTelegramHtml_('**Черновик**\n\n```\nтекст\n```\n\nхвост'),
+    '<b>Черновик</b>\n\n<pre>текст</pre>\n\nхвост', 'pre alongside bold');
 
   // --- extractJson_ ---
   assertEqual_(extractJson_('{"a":1}'), { a: 1 }, 'plain JSON');

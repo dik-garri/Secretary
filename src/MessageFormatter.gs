@@ -14,7 +14,16 @@ function escapeHtml_(text) {
 }
 
 function toTelegramHtml_(text) {
-  return escapeHtml_(text).replace(/\*\*([^*\n][^*]*?)\*\*/g, '<b>$1</b>');
+  let s = escapeHtml_(text);
+  // ``` fences → <pre> (tap-to-copy in Telegram). Extracted before bold
+  // conversion: Telegram forbids other tags inside <pre>.
+  const pres = [];
+  s = s.replace(/```\n?([\s\S]*?)```/g, function (m, body) {
+    pres.push('<pre>' + body.replace(/\n$/, '') + '</pre>');
+    return '\uE000PRE' + (pres.length - 1) + '\uE000';
+  });
+  s = s.replace(/\*\*([^*\n][^*]*?)\*\*/g, '<b>$1</b>');
+  return s.replace(/\uE000PRE(\d+)\uE000/g, function (m, i) { return pres[+i]; });
 }
 
 /**
@@ -121,6 +130,7 @@ function helpText_() {
     '• «Задача про отчёт — срочная»\n' +
     '• «Удали напоминание про Андрея»\n' +
     '• «Запиши: идея для проповеди про…» / «Что я записывал про…»\n' +
+    '• «Напиши сообщение Андрею, что встреча переносится» (потом: «формальнее»)\n' +
     '• «Что у меня сегодня?» — сводка\n' +
     '• «Присылай сводку каждый день в 8 утра»\n' +
     '• «Вот мои мысли, структурируй их: …»\n' +
