@@ -4,15 +4,31 @@
  * One Gemini call per user message: the model returns intent AND payload
  * (and, for voice, the transcript) in a single JSON object. GAS validates
  * the JSON and executes the action — the model never touches Sheets.
+ *
+ * MCP-style contract: the list of intents, their descriptions and parameter
+ * schemas shown to the model are GENERATED from the TOOLS_ registry
+ * (Actions.gs). The same registry validates the response and routes it, so
+ * prompt, validation and code can never drift apart.
  */
 
-const INTENTS_ = [
-  'create_reminder', 'list_reminders', 'delete_reminder',
-  'create_task', 'complete_task', 'list_tasks', 'delete_task', 'update_task',
-  'create_note', 'list_notes', 'search_notes', 'delete_note',
-  'summary', 'summary_schedule', 'draft_message',
-  'structure', 'transcribe_mode', 'answer', 'clarify', 'multi'
-];
+/** Intent names the model is allowed to return (registry + the multi wrapper). */
+function knownIntents_() {
+  return TOOLS_.map(function (t) { return t.name; }).concat(['multi']);
+}
+
+/** Render the tool registry as the prompt's capability list. */
+function renderToolList_() {
+  return TOOLS_.map(function (t) {
+    let line = '- ' + t.name + ' — ' + t.desc;
+    const params = Object.keys(t.params || {});
+    if (params.length) {
+      line += '\n  Параметры: ' + params.map(function (p) {
+        return p + ': ' + t.params[p];
+      }).join('; ');
+    }
+    return line;
+  }).join('\n');
+}
 
 function buildIntentPrompt_(user, contextNote, isAudio) {
   const now = nowInfo_(user.timezone);
@@ -21,42 +37,8 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     'без команд. Определи намерение и верни СТРОГО один JSON-объект, без markdown и пояснений.\n\n' +
     'Текущая дата и время: ' + now.datetime + ' (' + now.weekday + ')\n' +
     'Часовой пояс пользователя: ' + now.tz + '\n\n' +
-    'Возможные значения intent:\n' +
-    '- create_reminder — создать напоминание (разовое или повторяющееся)\n' +
-    '- list_reminders — показать активные напоминания\n' +
-    '- delete_reminder — удалить/отменить напоминание (query — ключевые слова для поиска, ' +
-    'без служебных слов; all = true, если пользователь хочет удалить ВСЕ подходящие: «оба», «все», «всё про…»)\n' +
-    '- create_task — добавить задачу/задачи. tasks — массив объектов ' +
-    '{"text": "...", "priority": "HIGH|NORMAL|LOW", "due": "YYYY-MM-DD" или null}. ' +
-    'priority: «важно», «срочно», «в первую очередь» = HIGH; «неважно», «потом», «как-нибудь» = LOW; иначе NORMAL. ' +
-    'due заполняй только если назван срок («до пятницы», «к 15-му»)\n' +
-    '- complete_task — отметить задачу выполненной (query — ключевые слова; all = true для «все»/«обе»)\n' +
-    '- delete_task — удалить задачу совсем, не выполнив («удали задачу», «убери из списка»; query, all)\n' +
-    '- update_task — изменить приоритет или срок существующей задачи ' +
-    '(«задача про отчёт — срочная», «перенеси срок на пятницу»; query + priority и/или due)\n' +
-    '- list_tasks — показать открытые задачи\n' +
-    '- create_note — сохранить заметку/мысль/факт БЕЗ действия и срока ' +
-    '(«запиши:», «заметка:», «сохрани мысль», «запомни, что…»; note — текст, tags — 1-3 коротких тега)\n' +
-    '- list_notes — показать заметки\n' +
-    '- search_notes — найти заметку («что я записывал про…»; query)\n' +
-    '- delete_note — удалить заметку (query, all)\n' +
-    '- summary — сводка по запросу: «что у меня сегодня/на неделю», «сводка», «мой день» ' +
-    '(period: "daily" или "weekly")\n' +
-    '- summary_schedule — настроить регулярную сводку: «присылай сводку каждый день в 8», ' +
-    '«еженедельную сводку по понедельникам в 9», «отключи ежедневную сводку» ' +
-    '(period: "daily"|"weekly", time: "HH:mm", day: "MON".."SUN" для weekly, enabled: true|false)\n' +
-    '- draft_message — составить сообщение или письмо кому-то от лица пользователя ' +
-    '(«напиши сообщение Кут-Назару о…», «составь письмо…», «ответь ему, что…», «черновик…»). ' +
-    'draft: {"recipient": "имя/кому", "channel": "message" или "email", ' +
-    '"subject": "тема (только для email)", "text": "полный готовый к отправке текст"}. ' +
-    'Текст пиши от первого лица, вежливо, без плейсхолдеров вроде [имя]. ' +
-    'Если пользователь просит доработать предыдущий черновик («короче», «формальнее», «добавь…») — ' +
-    'верни draft_message с полным ОБНОВЛЁННЫМ текстом\n' +
-    '- structure — пользователь просит структурировать/суммировать/оформить свой текст ' +
-    '(выбери подходящий формат: список, чеклист, план, тезисы, action items — и положи ГОТОВЫЙ результат в reply)\n' +
-    '- transcribe_mode — просит расшифровать СЛЕДУЮЩЕЕ голосовое дословно, ничего не меняя\n' +
-    '- answer — обычный вопрос или просьба, не подходящая под остальное (ответ в reply)\n' +
-    '- clarify — для действия не хватает критичных данных (вопрос в clarify_question)\n' +
+    'Доступные intent (используй ТОЛЬКО их):\n' +
+    renderToolList_() + '\n' +
     '- multi — в сообщении НЕСКОЛЬКО независимых команд. Верни ' +
     '{"intent": "multi", "actions": [полные intent-объекты по порядку]}. Примеры:\n' +
     '  «удали все задачи и добавь задачу доработать видео» → {"intent": "multi", "actions": [' +
@@ -65,29 +47,10 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     '  «напомни 5-го и 10-го ноября в 9 утра сдать документы» → multi из ДВУХ create_reminder ' +
     '(2026-11-05 09:00 и 2026-11-10 09:00). Перечисление дат = отдельные разовые напоминания, ' +
     'НЕ recurrence! MONTHLY только при явном «каждый месяц» / «каждое 5-е число»\n\n' +
-    'Формат ответа:\n' +
-    '{\n' +
-    '  "intent": "...",\n' +
-    '  "transcript": "только для аудио: полный распознанный текст",\n' +
-    '  "reminder": {"text": "...", "datetime": "YYYY-MM-DD HH:mm" или null,\n' +
-    '    "recurrence": null или {"type": "DAILY|WEEKDAYS|WEEKLY|MONTHLY", "days": ["MON",...], "day_of_month": 1..31, "time": "HH:mm"}},\n' +
-    '  "tasks": [{"text": "...", "priority": "NORMAL", "due": null}],\n' +
-    '  "query": "...",\n' +
-    '  "all": true,\n' +
-    '  "priority": "HIGH|NORMAL|LOW",\n' +
-    '  "due": "YYYY-MM-DD",\n' +
-    '  "note": "...",\n' +
-    '  "tags": ["..."],\n' +
-    '  "draft": {"recipient": "...", "channel": "message|email", "subject": "...", "text": "..."},\n' +
-    '  "period": "daily|weekly",\n' +
-    '  "time": "HH:mm",\n' +
-    '  "day": "MON",\n' +
-    '  "enabled": true,\n' +
-    '  "reply": "...",\n' +
-    '  "clarify_question": "...",\n' +
-    '  "confidence": 0.0\n' +
-    '}\n' +
-    'Заполняй только поля, относящиеся к intent.\n\n' +
+    'Формат ответа — один JSON-объект:\n' +
+    '{"intent": "<имя intent>", ...параметры выбранного intent (см. список выше), ' +
+    '"transcript": "(только для аудио) полный распознанный текст", "confidence": 0..1}\n' +
+    'Заполняй только параметры выбранного intent.\n\n' +
     'Правила:\n' +
     '- ВАЖНЕЙШЕЕ ПРАВИЛО для create_reminder: если в сообщении НЕТ указания времени — ' +
     'ни точного («в 15:00»), ни словесного («утром», «вечером», «через час») — ты ОБЯЗАН вернуть ' +
@@ -166,11 +129,12 @@ function validateIntent_(geminiResult) {
     _model: geminiResult.model,
     _raw: String(geminiResult.text).substring(0, 500)
   };
-  if (!obj || INTENTS_.indexOf(obj.intent) === -1) return invalid;
+  const known = knownIntents_();
+  if (!obj || known.indexOf(obj.intent) === -1) return invalid;
 
   if (obj.intent === 'multi') {
     obj.actions = (obj.actions || []).filter(function (a) {
-      return a && INTENTS_.indexOf(a.intent) !== -1 && a.intent !== 'multi';
+      return a && a.intent !== 'multi' && known.indexOf(a.intent) !== -1;
     }).slice(0, 5);
     if (!obj.actions.length) return invalid;
     if (obj.actions.length === 1) {

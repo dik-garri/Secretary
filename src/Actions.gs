@@ -6,27 +6,153 @@
  * GAS validates the AI's JSON here — the model never writes to Sheets.
  */
 
-const ACTION_HANDLERS_ = {
-  create_reminder: actionCreateReminder_,
-  list_reminders: actionListReminders_,
-  delete_reminder: actionDeleteReminder_,
-  create_task: actionCreateTask_,
-  complete_task: actionCompleteTask_,
-  delete_task: actionDeleteTask_,
-  update_task: actionUpdateTask_,
-  list_tasks: actionListTasks_,
-  create_note: actionCreateNote_,
-  list_notes: actionListNotes_,
-  search_notes: actionSearchNotes_,
-  delete_note: actionDeleteNote_,
-  summary: actionSummary_,
-  summary_schedule: actionSummarySchedule_,
-  draft_message: actionDraftMessage_,
-  structure: actionReply_,
-  answer: actionReply_,
-  transcribe_mode: actionTranscribeMode_,
-  clarify: actionClarify_
-};
+// ===== Tool registry — the single source of truth (MCP-style) =====
+// Each entry declares: what the tool is FOR (desc — shown to the model),
+// its parameters (name → spec string, also shown to the model), and the
+// handler. The AI prompt and intent validation are GENERATED from this
+// registry (AIService.gs), so the model can never see a capability that
+// the code doesn't have, and vice versa.
+//
+// Adding a feature = one entry here + one handler function below.
+
+const QUERY_SPEC_ = '"..." — ТОЛЬКО слова, идентифицирующие элемент по содержанию; ' +
+  'служебные («все», «три», «задачи», «напоминания») не включай, при «все/оба» оставь пустым';
+const ALL_SPEC_ = 'true, если пользователь имеет в виду ВСЕ подходящие («все», «оба», «всё про…»)';
+
+const TOOLS_ = [
+  {
+    name: 'create_reminder',
+    desc: 'создать напоминание (разовое или повторяющееся)',
+    params: {
+      reminder: '{"text": "...", "datetime": "YYYY-MM-DD HH:mm" или null, ' +
+        '"recurrence": null или {"type": "DAILY|WEEKDAYS|WEEKLY|MONTHLY", "days": ["MON",...], ' +
+        '"day_of_month": 1..31, "time": "HH:mm"}} — для разового recurrence = null, ' +
+        'для повторяющегося datetime = null'
+    },
+    handler: actionCreateReminder_
+  },
+  { name: 'list_reminders', desc: 'показать активные напоминания', params: {}, handler: actionListReminders_ },
+  {
+    name: 'delete_reminder',
+    desc: 'удалить/отменить напоминание',
+    params: { query: QUERY_SPEC_, all: ALL_SPEC_ },
+    handler: actionDeleteReminder_
+  },
+  {
+    name: 'create_task',
+    desc: 'добавить задачу или несколько задач (дела, требующие действия)',
+    params: {
+      tasks: '[{"text": "...", "priority": "HIGH|NORMAL|LOW", "due": "YYYY-MM-DD" или null}] — ' +
+        'priority: «важно», «срочно» = HIGH; «неважно», «потом» = LOW; иначе NORMAL; ' +
+        'due только если назван срок («до пятницы», «к 15-му»); формулировки короткие, в инфинитиве'
+    },
+    handler: actionCreateTask_
+  },
+  {
+    name: 'complete_task',
+    desc: 'отметить задачу выполненной',
+    params: { query: QUERY_SPEC_, all: ALL_SPEC_ },
+    handler: actionCompleteTask_
+  },
+  {
+    name: 'delete_task',
+    desc: 'удалить задачу совсем, не выполнив («убери из списка»)',
+    params: { query: QUERY_SPEC_, all: ALL_SPEC_ },
+    handler: actionDeleteTask_
+  },
+  {
+    name: 'update_task',
+    desc: 'изменить приоритет или срок существующей задачи («задача про отчёт — срочная», «перенеси на пятницу»)',
+    params: {
+      query: QUERY_SPEC_,
+      priority: '"HIGH|NORMAL|LOW"',
+      due: '"YYYY-MM-DD"'
+    },
+    handler: actionUpdateTask_
+  },
+  { name: 'list_tasks', desc: 'показать открытые задачи', params: {}, handler: actionListTasks_ },
+  {
+    name: 'create_note',
+    desc: 'сохранить заметку/мысль/факт БЕЗ действия и срока («запиши:», «сохрани мысль», «запомни, что…»)',
+    params: { note: '"..." — текст заметки', tags: '["..."] — 1-3 коротких тега' },
+    handler: actionCreateNote_
+  },
+  { name: 'list_notes', desc: 'показать заметки', params: {}, handler: actionListNotes_ },
+  {
+    name: 'search_notes',
+    desc: 'найти заметку («что я записывал про…»)',
+    params: { query: QUERY_SPEC_ },
+    handler: actionSearchNotes_
+  },
+  {
+    name: 'delete_note',
+    desc: 'удалить заметку',
+    params: { query: QUERY_SPEC_, all: ALL_SPEC_ },
+    handler: actionDeleteNote_
+  },
+  {
+    name: 'summary',
+    desc: 'сводка по запросу: «что у меня сегодня/на неделю», «сводка», «мой день»',
+    params: { period: '"daily" или "weekly"' },
+    handler: actionSummary_
+  },
+  {
+    name: 'summary_schedule',
+    desc: 'настроить регулярную сводку («присылай сводку каждый день в 8», «отключи ежедневную сводку»)',
+    params: {
+      period: '"daily" или "weekly"',
+      time: '"HH:mm"',
+      day: '"MON".."SUN" — только для weekly',
+      enabled: 'false для отключения, иначе true'
+    },
+    handler: actionSummarySchedule_
+  },
+  {
+    name: 'draft_message',
+    desc: 'составить сообщение или письмо кому-то от лица пользователя ' +
+      '(«напиши сообщение X о…», «составь письмо…», «ответь ему, что…»). ' +
+      'Если просят доработать предыдущий черновик («короче», «формальнее») — ' +
+      'верни draft_message с полным ОБНОВЛЁННЫМ текстом',
+    params: {
+      draft: '{"recipient": "кому", "channel": "message" или "email", ' +
+        '"subject": "тема (только email)", "text": "полный готовый текст от первого лица, ' +
+        'вежливо, без плейсхолдеров вроде [имя]"}'
+    },
+    handler: actionDraftMessage_
+  },
+  {
+    name: 'structure',
+    desc: 'структурировать/суммировать/оформить текст пользователя ' +
+      '(выбери формат: список, чеклист, план, тезисы, action items — ГОТОВЫЙ результат в reply)',
+    params: { reply: '"..." — готовый структурированный результат' },
+    handler: actionReply_
+  },
+  {
+    name: 'transcribe_mode',
+    desc: 'пользователь просит расшифровать СЛЕДУЮЩЕЕ голосовое дословно, ничего не меняя',
+    params: {},
+    handler: actionTranscribeMode_
+  },
+  {
+    name: 'answer',
+    desc: 'обычный вопрос или просьба, не подходящая под остальное',
+    params: { reply: '"..." — ответ пользователю' },
+    handler: actionReply_
+  },
+  {
+    name: 'clarify',
+    desc: 'для действия не хватает критичных данных — задай вопрос',
+    params: { clarify_question: '"..." — уточняющий вопрос' },
+    handler: actionClarify_
+  }
+];
+
+function findTool_(name) {
+  for (let i = 0; i < TOOLS_.length; i++) {
+    if (TOOLS_[i].name === name) return TOOLS_[i];
+  }
+  return null;
+}
 
 /** Route a validated intent to its handler. Returns reply text. */
 function executeIntent_(user, intent) {
@@ -38,16 +164,16 @@ function executeIntent_(user, intent) {
       const sub = intent.actions[i];
       sub._sourceText = intent._sourceText;
       sub._prevOriginal = intent._prevOriginal;
-      const handler = ACTION_HANDLERS_[sub.intent];
-      replies.push(handler ? handler(user, sub) : '🤔 Не умею: ' + sub.intent);
+      const tool = findTool_(sub.intent);
+      replies.push(tool ? tool.handler(user, sub) : '🤔 Не умею: ' + sub.intent);
     }
     return replies.join('\n\n');
   }
-  const handler = ACTION_HANDLERS_[intent.intent];
-  if (!handler) {
+  const tool = findTool_(intent.intent);
+  if (!tool) {
     return '🤔 Я пока не умею это делать. Напишите /help — покажу, что умею.';
   }
-  return handler(user, intent);
+  return tool.handler(user, intent);
 }
 
 // ===== Handlers =====

@@ -9,8 +9,14 @@ language is Russian; code comments are English.
 - **Intent pipeline**: user message → one Gemini call → strict JSON
   (`intent` + payload + `transcript` for voice) → validated in GAS →
   `Actions.gs` handler → reply. Gemini never writes to Sheets.
-- **Extending the bot** = add intent to prompt in `AIService.gs`, add handler
-  in `Actions.gs`, register in `ACTION_HANDLERS_`. No other file changes.
+- **Tool registry (MCP-style)**: `TOOLS_` in `Actions.gs` is the single
+  source of truth — name, RU description, param specs, handler. The AI
+  prompt's capability list and intent validation are GENERATED from it
+  (`renderToolList_`/`knownIntents_` in `AIService.gs`), so prompt,
+  validation and code cannot drift.
+- **Extending the bot** = one `TOOLS_` entry + one handler in `Actions.gs`.
+  No other file changes. Cross-cutting rules (dates, clarify, query hygiene,
+  multi) stay hand-written in `buildIntentPrompt_`.
 - **Model fallback** lives in `GeminiService.gs`; the chain is data in the
   `Models` sheet (Model|Text|Audio|Enabled|Priority), failure counters in
   ScriptProperties `MODEL_FAILS`, max 5 attempts/request. Pattern taken from

@@ -90,6 +90,18 @@ function runTests() {
   assertTrue_(fuzzyMatch_('Купить лекарства', 'задачу про лекарства'), 'generic words stripped, content kept');
   assertEqual_(fuzzyMatch_('Написать Андрею', 'задачу про лекарства'), false, 'content word still required');
 
+  // --- TOOLS_ registry consistency ---
+  const names = TOOLS_.map(function (t) { return t.name; });
+  assertEqual_(names.length, new Set(names).size, 'tool names unique');
+  TOOLS_.forEach(function (t) {
+    assertTrue_(typeof t.handler === 'function', 'handler is function: ' + t.name);
+    assertTrue_(!!t.desc, 'desc present: ' + t.name);
+  });
+  assertTrue_(knownIntents_().indexOf('draft_message') !== -1, 'registry feeds knownIntents_');
+  assertTrue_(knownIntents_().indexOf('multi') !== -1, 'multi allowed');
+  assertTrue_(renderToolList_().indexOf('- create_reminder — ') === 0, 'tool list renders from registry');
+  assertTrue_(renderToolList_().indexOf('Параметры: query:') !== -1, 'params render into prompt');
+
   // --- validateIntent_ multi ---
   const multiRaw = { text: JSON.stringify({ intent: 'multi', actions: [
     { intent: 'delete_task', query: '', all: true },
