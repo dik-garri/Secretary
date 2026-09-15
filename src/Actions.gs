@@ -30,6 +30,19 @@ const ACTION_HANDLERS_ = {
 
 /** Route a validated intent to its handler. Returns reply text. */
 function executeIntent_(user, intent) {
+  // Several independent commands in one message («удали X и добавь Y»):
+  // execute in order, join the replies.
+  if (intent.intent === 'multi') {
+    const replies = [];
+    for (let i = 0; i < intent.actions.length; i++) {
+      const sub = intent.actions[i];
+      sub._sourceText = intent._sourceText;
+      sub._prevOriginal = intent._prevOriginal;
+      const handler = ACTION_HANDLERS_[sub.intent];
+      replies.push(handler ? handler(user, sub) : '🤔 Не умею: ' + sub.intent);
+    }
+    return replies.join('\n\n');
+  }
   const handler = ACTION_HANDLERS_[intent.intent];
   if (!handler) {
     return '🤔 Я пока не умею это делать. Напишите /help — покажу, что умею.';

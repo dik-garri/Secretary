@@ -11,7 +11,7 @@ const INTENTS_ = [
   'create_task', 'complete_task', 'list_tasks', 'delete_task', 'update_task',
   'create_note', 'list_notes', 'search_notes', 'delete_note',
   'summary', 'summary_schedule', 'draft_message',
-  'structure', 'transcribe_mode', 'answer', 'clarify'
+  'structure', 'transcribe_mode', 'answer', 'clarify', 'multi'
 ];
 
 function buildIntentPrompt_(user, contextNote, isAudio) {
@@ -56,7 +56,15 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     '(выбери подходящий формат: список, чеклист, план, тезисы, action items — и положи ГОТОВЫЙ результат в reply)\n' +
     '- transcribe_mode — просит расшифровать СЛЕДУЮЩЕЕ голосовое дословно, ничего не меняя\n' +
     '- answer — обычный вопрос или просьба, не подходящая под остальное (ответ в reply)\n' +
-    '- clarify — для действия не хватает критичных данных (вопрос в clarify_question)\n\n' +
+    '- clarify — для действия не хватает критичных данных (вопрос в clarify_question)\n' +
+    '- multi — в сообщении НЕСКОЛЬКО независимых команд. Верни ' +
+    '{"intent": "multi", "actions": [полные intent-объекты по порядку]}. Примеры:\n' +
+    '  «удали все задачи и добавь задачу доработать видео» → {"intent": "multi", "actions": [' +
+    '{"intent": "delete_task", "query": "", "all": true}, ' +
+    '{"intent": "create_task", "tasks": [{"text": "Доработать видео", "priority": "NORMAL", "due": null}]}]}\n' +
+    '  «напомни 5-го и 10-го ноября в 9 утра сдать документы» → multi из ДВУХ create_reminder ' +
+    '(2026-11-05 09:00 и 2026-11-10 09:00). Перечисление дат = отдельные разовые напоминания, ' +
+    'НЕ recurrence! MONTHLY только при явном «каждый месяц» / «каждое 5-е число»\n\n' +
     'Формат ответа:\n' +
     '{\n' +
     '  "intent": "...",\n' +
@@ -83,7 +91,9 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     'Правила:\n' +
     '- ВАЖНЕЙШЕЕ ПРАВИЛО для create_reminder: если в сообщении НЕТ указания времени — ' +
     'ни точного («в 15:00»), ни словесного («утром», «вечером», «через час») — ты ОБЯЗАН вернуть ' +
-    'intent = clarify и спросить время. Выдумывать или подставлять время по умолчанию ЗАПРЕЩЕНО.\n' +
+    'intent = clarify и спросить время. Выдумывать или подставлять время по умолчанию ЗАПРЕЩЕНО. ' +
+    'Это касается и recurrence.time, и нескольких напоминаний сразу ' +
+    '(«напомни 5-го и 10-го ноября сдать документы» → один clarify: «Во сколько напомнить 5 и 10 ноября?»).\n' +
     '  Пример: «Напомни мне завтра встретиться с Петром» → {"intent": "clarify", ' +
     '"clarify_question": "Во сколько завтра напомнить о встрече с Петром?"} — здесь есть дата (завтра), но НЕТ времени.\n' +
     '- Все относительные даты («завтра», «через 2 часа», «в субботу») вычисляй от текущего времени выше.\n' +
@@ -93,6 +103,9 @@ function buildIntentPrompt_(user, contextNote, isAudio) {
     '- Для повторяющегося напоминания: datetime = null, recurrence заполнено. Для разового: recurrence = null.\n' +
     '- В голосовом сообщении с несколькими делами (например «нужно А, потом Б, ещё В») — intent = create_task, ' +
     'каждое дело отдельным элементом tasks, формулировки короткие, в инфинитиве.\n' +
+    '- В query для delete/complete/update/search клади ТОЛЬКО слова, идентифицирующие конкретный ' +
+    'элемент по содержанию. Служебные слова («все», «три», «задачи», «напоминания») в query не пиши: ' +
+    '«удали все три задачи» → {"query": "", "all": true}; «удали задачу про видео» → {"query": "видео"}.\n' +
     '- reply — краткий, структурированный текст для Telegram: короткие абзацы, нумерованные списки или «•». ' +
     'Из разметки допустим только **жирный**. Без заголовков #, без таблиц. Отвечай на языке пользователя.\n' +
     '- confidence — твоя уверенность от 0 до 1.\n';
@@ -146,15 +159,26 @@ function transcribeVoice_(user, blob) {
  */
 function validateIntent_(geminiResult) {
   const obj = extractJson_(geminiResult.text);
-  if (!obj || INTENTS_.indexOf(obj.intent) === -1) {
-    return {
-      intent: 'clarify',
-      clarify_question: 'Я не понял запрос. Сформулируйте, пожалуйста, иначе.',
-      confidence: 0,
-      _model: geminiResult.model,
-      _raw: String(geminiResult.text).substring(0, 500)
-    };
+  const invalid = {
+    intent: 'clarify',
+    clarify_question: 'Я не понял запрос. Сформулируйте, пожалуйста, иначе.',
+    confidence: 0,
+    _model: geminiResult.model,
+    _raw: String(geminiResult.text).substring(0, 500)
+  };
+  if (!obj || INTENTS_.indexOf(obj.intent) === -1) return invalid;
+
+  if (obj.intent === 'multi') {
+    obj.actions = (obj.actions || []).filter(function (a) {
+      return a && INTENTS_.indexOf(a.intent) !== -1 && a.intent !== 'multi';
+    }).slice(0, 5);
+    if (!obj.actions.length) return invalid;
+    if (obj.actions.length === 1) {
+      obj.actions[0]._model = geminiResult.model;
+      return obj.actions[0]; // single action wrapped in multi — unwrap
+    }
   }
+
   obj._model = geminiResult.model;
   return obj;
 }

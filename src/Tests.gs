@@ -85,6 +85,25 @@ function runTests() {
   assertTrue_(fuzzyMatch_('Позвонить Андрею', 'про андрея'), 'short «про» does not block');
   assertEqual_(fuzzyMatch_('Купить продукты', 'петра'), false, 'no false positive');
   assertEqual_(fuzzyMatch_('Позвонить маме', 'позвонить папе'), false, 'both words required');
+  assertTrue_(fuzzyMatch_('Купить детям лекарства', 'все три задачи'), 'generic-only query matches all');
+  assertTrue_(fuzzyMatch_('Написать Андрею насчёт встречи', 'все'), '«все» matches all');
+  assertTrue_(fuzzyMatch_('Купить лекарства', 'задачу про лекарства'), 'generic words stripped, content kept');
+  assertEqual_(fuzzyMatch_('Написать Андрею', 'задачу про лекарства'), false, 'content word still required');
+
+  // --- validateIntent_ multi ---
+  const multiRaw = { text: JSON.stringify({ intent: 'multi', actions: [
+    { intent: 'delete_task', query: '', all: true },
+    { intent: 'create_task', tasks: [{ text: 'Доработать видео' }] }
+  ] }), model: 'test-model' };
+  const multi = validateIntent_(multiRaw);
+  assertEqual_(multi.intent, 'multi', 'multi accepted');
+  assertEqual_(multi.actions.length, 2, 'multi keeps both actions');
+  const single = validateIntent_({ text: JSON.stringify({ intent: 'multi', actions: [
+    { intent: 'list_tasks' }, { intent: 'nonsense' }
+  ] }), model: 'm' });
+  assertEqual_(single.intent, 'list_tasks', 'multi with one valid action unwraps');
+  assertEqual_(validateIntent_({ text: JSON.stringify({ intent: 'multi', actions: [] }), model: 'm' }).intent,
+    'clarify', 'empty multi degrades to clarify');
 
   // --- normalizeTaskItem_ / priorities ---
   assertEqual_(normalizeTaskItem_('купить хлеб'), { text: 'купить хлеб', priority: 'NORMAL', due: '' }, 'string task item');

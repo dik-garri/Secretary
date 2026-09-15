@@ -148,14 +148,30 @@ function wordsMatch_(a, b) {
   return p >= need && a.length - p <= 2 && b.length - p <= 2;
 }
 
+// Words that describe the item TYPE or quantity, not its content — they leak
+// into search queries («удали все три задачи») and must not affect matching.
+const GENERIC_QUERY_WORDS_ = ['все', 'всё', 'весь', 'всех', 'оба', 'обе', 'обеих', 'обоих',
+  'один', 'одну', 'одна', 'два', 'две', 'три', 'четыре', 'пять', 'шесть', 'семь',
+  'восемь', 'девять', 'десять', 'мой', 'моя', 'моё', 'мои', 'эта', 'эту', 'этот', 'эти'];
+const GENERIC_QUERY_STEMS_ = ['задач', 'таск', 'напомин', 'замет', 'запис', 'штук', 'пункт'];
+
+function isGenericQueryWord_(w) {
+  const word = String(w).toLowerCase().replace(/ё/g, 'е');
+  if (GENERIC_QUERY_WORDS_.indexOf(word) !== -1) return true;
+  return GENERIC_QUERY_STEMS_.some(function (stem) { return word.indexOf(stem) === 0; });
+}
+
 /**
  * Does `text` match the search `query`? Every significant query word
- * (4+ chars) must fuzzy-match some text word; 3-char words are optional
- * (short prepositions like «про» must not block a match).
+ * (4+ chars, excluding generic type/quantity words) must fuzzy-match some
+ * text word; 3-char words are optional (prepositions must not block).
+ * A query with NO significant words («все три задачи») matches everything —
+ * the caller's disambiguation/all logic decides what to do with the set.
  */
 function fuzzyMatch_(text, query) {
   const textWords = String(text || '').toLowerCase().split(/[^a-zа-яё0-9]+/i).filter(String);
-  const queryWords = String(query || '').toLowerCase().split(/[^a-zа-яё0-9]+/i).filter(String);
+  const queryWords = String(query || '').toLowerCase().split(/[^a-zа-яё0-9]+/i)
+    .filter(String).filter(function (w) { return !isGenericQueryWord_(w); });
   const required = queryWords.filter(function (w) { return w.length >= 4; });
   const optional = queryWords.filter(function (w) { return w.length === 3; });
   const hits = function (w) {
@@ -163,7 +179,7 @@ function fuzzyMatch_(text, query) {
   };
   if (required.length) return required.every(hits);
   if (optional.length) return optional.some(hits);
-  return String(text || '').toLowerCase().indexOf(String(query || '').toLowerCase().trim()) !== -1;
+  return true; // only generic words in the query → match all
 }
 
 /**
